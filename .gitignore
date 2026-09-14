@@ -1,0 +1,62 @@
+# Private workspace material (never publish from this repository)
+/.migration/
+/CogSci/
+/ICASSP2027_Code/
+/ICASSP2027_Paper/
+/ICASSP2027_Paper_Templates/
+/output/
+/tmp/
+/tools/
+/*.zip
+/PRIVATE_DO_NOT_UPLOAD.md
+/config/datasets.json
+
+# Datasets and generated representations
+**/data/
+**/datasets/
+**/downloads/
+**/preprocessed*/
+**/*.gdf
+**/*.mat
+**/*.npy
+**/*.npz
+
+# Vendored gumpy source package (despite its module name `data`)
+!/src/gumpy/data/
+!/src/gumpy/data/**
+
+# Experiment results and model artifacts
+**/artifacts/
+**/outputs/
+**/results/
+**/reports/
+**/training_logs/
+**/checkpoints/
+**/*.csv
+**/*.log
+**/*.h5
+**/*.hdf5
+**/*.keras
+**/*.ckpt*
+**/*.pth
+**/*.pt
+**/*.onnx
+**/*.rar
+
+# Generated figures and notebook state
+**/.ipynb_checkpoints/
+**/*.png
+**/*.jpg
+**/*.jpeg
+**/*.bmp
+
+# Local environments and caches
+**/.venv/
+**/venv/
+**/__pycache__/
+**/*.py[cod]
+**/.pytest_cache/
+**/.mypy_cache/
+**/.idea/
+**/.vscode/
+*.part

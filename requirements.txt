@@ -1,0 +1,11 @@
+tensorflow==2.16.1
+numpy==1.26.4
+scipy==1.13.1
+scikit-learn==1.5.2
+PyWavelets==1.6.0
+Pillow==10.4.0
+matplotlib==3.9.2
+mne==1.8.0
+mlxtend==0.23.1
+wget==3.2
+

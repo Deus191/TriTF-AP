@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "datasets": {
+    "openbmi": {
+      "landing_url": "https://gigadb.org/dataset/100542",
+      "historical_file_url_template": "ftp://parrot.genomics.cn/gigadb/pub/10.5524/100001_101000/100542/session{session}/s{subject}/sess{session:02d}_subj{subject:02d}_EEG_MI.mat",
+      "raw_local_path": null,
+      "images_local_path": null,
+      "image_relative_template": "sub{subject}/CL{label}_3ch/cl{label} STFT_{subject}_ch3_{subject}_tr{trial}.bmp",
+      "subjects": [1, 54],
+      "sessions": [1, 2],
+      "legacy_trials_per_class": 100
+    },
+    "bci_iv_2b": {
+      "landing_url": "https://www.bbci.de/competition/iv/#datasets",
+      "raw_local_path": null,
+      "images_local_path": "outputs/preprocessed_2b"
+    },
+    "bci_ii_iii": {
+      "landing_url": "https://www.bbci.de/competition/ii/",
+      "raw_local_path": null,
+      "images_local_path": null
+    }
+  }
+}
+
