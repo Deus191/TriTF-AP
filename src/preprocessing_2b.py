@@ -19,6 +19,8 @@ HIGHCUT = 30.0
 ANTI_DRIFT = 0.5
 NOTCH = 50.0
 NOTCH_Q = 30.0
+WINDOW_START_SECONDS = 4.0
+WINDOW_DURATION_SECONDS = 4.0
 
 
 def _resolve_data_root(data_root=None, config_path=None):
@@ -37,15 +39,26 @@ def _load_split(data_root, subject, training):
     signal = gumpy.signal.notch(loaded.raw_data, NOTCH, axis=0, fs=FS, Q=NOTCH_Q)
     signal = gumpy.signal.butter_highpass(signal, ANTI_DRIFT, axis=0, fs=FS)
     signal = gumpy.signal.butter_bandpass(signal, LOWCUT, HIGHCUT, axis=0, fs=FS)
-    left, right = gumpy.utils.extract_trials2(
-        signal,
-        loaded.trials,
-        loaded.labels,
-        loaded.trial_total,
-        FS,
-        nbClasses=2,
-    )
+    left, right = _extract_paper_window(signal, loaded.trials, loaded.labels)
     return normalize_trials(left), normalize_trials(right)
+
+
+def _extract_paper_window(signal, trials, labels):
+    """Extract the manuscript's four-second IV-2b segment from each trial."""
+    signal = np.asarray(signal)
+    trials = np.asarray(trials).reshape(-1).astype(np.int64)
+    labels = np.asarray(labels).reshape(-1).astype(np.int64)
+    if signal.ndim != 2 or signal.shape[1] != 3 or len(trials) != len(labels):
+        raise ValueError("Expected signal=(samples,3) and one start/label per trial.")
+    if set(np.unique(labels)) - {0, 1}:
+        raise ValueError("IV-2b paper experiment is binary.")
+    offset = int(round(WINDOW_START_SECONDS * FS))
+    length = int(round(WINDOW_DURATION_SECONDS * FS))
+    starts = trials + offset
+    if np.any(starts < 0) or np.any(starts + length > len(signal)):
+        raise ValueError("A configured four-second trial window lies outside the recording.")
+    windows = np.stack([signal[start:start + length] for start in starts])
+    return windows[labels == 0], windows[labels == 1]
 
 
 def GetdataET(index, *, data_root=None, config_path=None):
@@ -78,10 +91,12 @@ def GetPrecossedData(sub, output_root=None, *, data_root=None, config_path=None)
     test = np.concatenate((eval_left, eval_right)).transpose(0, 2, 1)
     train_labels = np.concatenate((np.zeros(len(train_left), dtype=int), np.ones(len(train_right), dtype=int)))
     test_labels = np.concatenate((np.zeros(len(eval_left), dtype=int), np.ones(len(eval_right), dtype=int)))
-    # IV-2b already contains three recorded bipolar channels; do not re-reference them.
+    # Apply the same paper-defined C3-Cz/C4-Cz two-map representation to every dataset.
     return (
-        preWT.CWT(train, train_labels, sub, "T", output_root=output_root, bipolar=False),
-        preWT.CWT(test, test_labels, sub, "E", output_root=output_root, bipolar=False),
+        preWT.CWT(train, train_labels, sub, "T", output_root=output_root,
+                  source_window_start_seconds=WINDOW_START_SECONDS),
+        preWT.CWT(test, test_labels, sub, "E", output_root=output_root,
+                  source_window_start_seconds=WINDOW_START_SECONDS),
     )
 
 
@@ -95,4 +110,3 @@ def GetPrecossedData2a(sub, *, data_root, labels_path, output_root):
         preWT.CWT(train_data, train_labels, sub, "T", output_root=output_root),
         preWT.CWT(eval_data, eval_labels, sub, "E", output_root=output_root),
     )
-

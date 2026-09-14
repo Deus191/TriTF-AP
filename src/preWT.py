@@ -1,4 +1,4 @@
-"""Corrected common TF writer. Output is NEW data, not the historical TF images."""
+"""Writer for the paper-defined TriTF-AP two-map TF representation."""
 import json
 from pathlib import Path
 import numpy as np
@@ -6,7 +6,8 @@ from protocol import labels_to_int
 from tf_preprocessing import trial_tf_image
 
 
-def CWT(data, label, subject, EorT, *, fs=250, output_root=None, wavelet="morl", bipolar=True):
+def CWT(data, label, subject, EorT, *, fs=250, output_root=None, wavelet="morl",
+        source_window_start_seconds=None):
     data = np.asarray(data)
     labels, _ = labels_to_int(label, num_classes=4)
     if data.ndim != 3 or data.shape[1] != 3 or len(data) != len(labels):
@@ -28,11 +29,28 @@ def CWT(data, label, subject, EorT, *, fs=250, output_root=None, wavelet="morl",
         folder = destination / ("CL" + name)
         folder.mkdir(exist_ok=True)
         path = folder / "cl{} ch3_{}_tr{}.bmp".format(name, subject, index)
-        trial_tf_image(trial, fs, wavelet, bipolar).save(path)
+        trial_tf_image(trial, fs, wavelet).save(path)
         records.append(str(path))
-    metadata = dict(fs=fs, channels=["C3", "Cz", "C4"], bipolar=bipolar,
-                    frequency_hz=[8, 30], frequency_bins=64, wavelet=wavelet,
-                    representation_version="repaired_v1", class_counts=counts,
-                    note="No class-dependent transform; labels used only for file grouping.")
+    metadata = dict(
+        representation="TriTF-AP paper TF image",
+        representation_version="tritf_ap_paper_v1",
+        fs=fs,
+        input_channels=["C3", "Cz", "C4"],
+        derivations=["C3-Cz", "C4-Cz"],
+        map_count=2,
+        canvas_layout="vertical: C3-Cz then C4-Cz",
+        frequency_hz=[8, 30],
+        frequency_bins=64,
+        wavelet=wavelet,
+        coefficient_transform="log1p(abs(CWT)**2)",
+        normalization="per-trial joint maximum across both maps",
+        colormap="jet",
+        output_shape=[64, 64, 3],
+        trial_samples=int(data.shape[2]),
+        trial_duration_seconds=float(data.shape[2] / fs),
+        source_window_start_seconds=source_window_start_seconds,
+        class_counts=counts,
+        note="No class-dependent transform; labels are used only for file grouping.",
+    )
     (destination / "preprocessing.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")
     return records

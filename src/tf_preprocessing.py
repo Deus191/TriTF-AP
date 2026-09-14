@@ -1,4 +1,4 @@
-"""Label-independent 8-30 Hz Morlet representation and numerical helpers."""
+"""Paper-defined, label-independent TriTF-AP time-frequency representation."""
 import numpy as np
 import pywt
 
@@ -23,18 +23,31 @@ def cwt_band(signal, fs, wavelet="morl", bins=64, low=8.0, high=30.0):
     return np.abs(coefficients), actual
 
 
-def trial_tf_image(trial, fs, wavelet="morl", bipolar=True):
-    """trial=(3,T), channel order C3,Cz,C4. No class label argument by design."""
+def paper_bipolar_pair(trial):
+    """Return the two paper derivations from C3/Cz/C4 input in shape (3,T)."""
+    trial = np.asarray(trial, dtype=np.float64)
+    if trial.ndim != 2 or trial.shape[0] != 3 or not np.isfinite(trial).all():
+        raise ValueError("Exactly finite C3,Cz,C4 input in shape (3,T) is required.")
+    return np.stack((trial[0] - trial[1], trial[2] - trial[1]))
+
+
+def paper_tf_canvas(trial, fs, wavelet="morl"):
+    """Build the normalized two-map log-power canvas before RGB conversion."""
+    derived = paper_bipolar_pair(trial)
+    power = np.concatenate(
+        [np.square(cwt_band(signal, fs, wavelet)[0]) for signal in derived], axis=0
+    )
+    log_power = np.log1p(power)
+    maximum = log_power.max()
+    return log_power / maximum if maximum > 0 else np.zeros_like(log_power)
+
+
+def trial_tf_image(trial, fs, wavelet="morl"):
+    """Create the paper's 64x64 RGB image; labels cannot affect this transform."""
     from PIL import Image
     from matplotlib import colormaps
-    trial = np.asarray(trial)
-    if trial.ndim != 2 or trial.shape[0] != 3:
-        raise ValueError("Exactly C3,Cz,C4 in shape (3,T) are required.")
-    derived = np.stack((trial[0] - trial[1], trial[2] - trial[1])) if bipolar else trial
-    magnitude = np.concatenate([cwt_band(signal, fs, wavelet)[0] for signal in derived], axis=0)
-    maximum = magnitude.max()
-    normalized = magnitude / maximum if maximum > 0 else np.zeros_like(magnitude)
-    rgb = np.rint(colormaps["jet"](normalized)[..., :3] * 255).astype(np.uint8)
+    canvas = paper_tf_canvas(trial, fs, wavelet)
+    rgb = np.rint(colormaps["jet"](canvas)[..., :3] * 255).astype(np.uint8)
     return Image.fromarray(rgb, mode="RGB").resize((64, 64), Image.Resampling.BILINEAR)
 
 

@@ -16,7 +16,15 @@ sys.path.insert(0, str(ROOT / "src"))
 os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "2")
 os.environ.setdefault("MPLBACKEND", "Agg")
 from protocol import labels_to_int, split_source, check_ids, validate_images
-from tf_preprocessing import cwt_band, normalize_trials, trial_tf_image, fit_ea, apply_ea
+from tf_preprocessing import (
+    apply_ea,
+    cwt_band,
+    fit_ea,
+    normalize_trials,
+    paper_bipolar_pair,
+    paper_tf_canvas,
+    trial_tf_image,
+)
 
 
 class ProtocolTests(unittest.TestCase):
@@ -76,14 +84,51 @@ class PreprocessingTests(unittest.TestCase):
         self.assertEqual(image.size, (64, 64))
         self.assertEqual(image.mode, "RGB")
 
+    def test_paper_derivations_and_two_map_canvas(self):
+        trial = np.stack((np.full(50, 3.0), np.full(50, 1.0), np.full(50, 6.0)))
+        derived = paper_bipolar_pair(trial)
+        np.testing.assert_array_equal(derived[0], 2.0)
+        np.testing.assert_array_equal(derived[1], 5.0)
+        canvas = paper_tf_canvas(trial, 250)
+        self.assertEqual(canvas.shape, (128, 50))
+        self.assertGreaterEqual(canvas.min(), 0.0)
+        self.assertLessEqual(canvas.max(), 1.0)
+
     def test_label_cannot_control_transform(self):
         import inspect
         self.assertNotIn('label', inspect.signature(trial_tf_image).parameters)
+        self.assertNotIn('bipolar', inspect.signature(trial_tf_image).parameters)
         import preWT
         trial = np.random.default_rng(1).normal(size=(3, 300))
         with tempfile.TemporaryDirectory(prefix="icassp_tf_test_") as tmp:
             paths = preWT.CWT(np.stack((trial, trial)), [0, 1], 1, 'T', output_root=tmp)
             self.assertEqual(Path(paths[0]).read_bytes(), Path(paths[1]).read_bytes())
+            metadata = json.loads((Path(tmp) / 'T' / 'sub_1' / 'preprocessing.json').read_text())
+            self.assertEqual(metadata['representation_version'], 'tritf_ap_paper_v1')
+            self.assertEqual(metadata['derivations'], ['C3-Cz', 'C4-Cz'])
+            self.assertEqual(metadata['map_count'], 2)
+
+    def test_2b_cannot_bypass_paper_derivations(self):
+        import preprocessing_2b as prep
+        split = tuple(np.ones((2, 100, 3)) * value for value in range(4))
+        with patch.object(prep, 'GetdataET', return_value=split), \
+             patch.object(prep.preWT, 'CWT', side_effect=['train_paths', 'test_paths']) as writer:
+            result = prep.GetPrecossedData(1, output_root='unused')
+        self.assertEqual(result, ('train_paths', 'test_paths'))
+        self.assertNotIn('bipolar', writer.call_args_list[0].kwargs)
+        self.assertNotIn('bipolar', writer.call_args_list[1].kwargs)
+        self.assertEqual(writer.call_args_list[0].kwargs['source_window_start_seconds'], 4.0)
+        self.assertEqual(writer.call_args_list[1].kwargs['source_window_start_seconds'], 4.0)
+
+    def test_2b_extracts_exact_four_second_window(self):
+        import preprocessing_2b as prep
+        signal = np.arange(6000 * 3, dtype=np.float64).reshape(6000, 3)
+        trials = np.array([100, 2500])
+        left, right = prep._extract_paper_window(signal, trials, [0, 1])
+        self.assertEqual(left.shape, (1, 1000, 3))
+        self.assertEqual(right.shape, (1, 1000, 3))
+        np.testing.assert_array_equal(left[0], signal[1100:2100])
+        np.testing.assert_array_equal(right[0], signal[3500:4500])
 
     def test_2a_distinct_train_test_dispatch(self):
         import preprocessing_2b as prep
@@ -183,6 +228,21 @@ class ModelTests(unittest.TestCase):
         self.assertLess(deploy.count_params(), model.count_params())
         self.assertFalse(any(isinstance(layer, self.tf.keras.layers.BatchNormalization) for layer in deploy.layers))
 
+    def test_binary_classifier_matches_paper_layer_contract(self):
+        from paper_model import build_classifier, export_deploy
+        model = build_classifier()
+        self.assertEqual(
+            [layer.name for layer in model.layers],
+            ['tf_image', 'stem_dw', 'stem_pw', 'stem_bn', 'stem_relu', 'stem_pool',
+             'stem_drop', 'rep_dw', 'rep_pw', 'rep_bn', 'rep_relu', 'simam',
+             'rep_pool', 'rep_drop', 'gap', 'head', 'prediction'],
+        )
+        self.assertEqual(model.get_layer('stem_pw').filters, 24)
+        self.assertEqual(model.get_layer('rep_pw').filters, 32)
+        self.assertEqual(model.get_layer('head').units, 72)
+        self.assertEqual(model.count_params(), 4526)
+        self.assertEqual(export_deploy(model).count_params(), 3850)
+
     def test_roundtrip_and_four_class_forward(self):
         from paper_model import build_classifier, export_deploy
         model = build_classifier(num_classes=4)
@@ -212,6 +272,8 @@ class TrainingSmokeTests(unittest.TestCase):
             self.assertEqual(model.output_shape[-1], 2)
             config = json.loads((output / 'config.json').read_text())
             self.assertEqual(config['status'], 'complete')
+            self.assertEqual(config['model'], 'tritf_ap_paper_v1')
+            self.assertEqual(config['expected_input_representation'], 'tritf_ap_paper_v1')
             self.assertEqual(config['fit_original_count'], 16)
             self.assertEqual(config['validation_count'], 4)
             self.assertEqual(config['test_count'], 4)

@@ -1,11 +1,15 @@
-"""NEW reconstruction of main.tex equations 135-181; NOT the historical trained model.
+"""Executable TriTF-AP classifier corresponding to main.tex equations 135-181.
 
 Unspecified choices: spatial dropout=0.25, BN epsilon=1e-3, no convolution
-bias before BN. Counts are measured, never forced to the manuscript's 4.6K.
+bias before BN. This implementation still requires fresh experiments; historical
+weights/results cannot be attributed to it without rerunning. Counts are measured,
+never forced to the manuscript's rounded 4.6K value.
 """
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras import layers
+
+PAPER_MODEL_VERSION = "tritf_ap_paper_v1"
 
 
 @tf.keras.utils.register_keras_serializable(package="TriTF")
@@ -105,7 +109,8 @@ def build_classifier(input_shape=(64, 64, 3), num_classes=2, deploy=False, dropo
     x = layers.GlobalAveragePooling2D(name="gap")(x)
     x = layers.Dense(72, activation="relu", name="head")(x)
     outputs = layers.Dense(num_classes, activation="softmax", name="prediction")(x)
-    return tf.keras.Model(inputs, outputs, name="TriTF_reconstruction")
+    graph = "deploy" if deploy else "training"
+    return tf.keras.Model(inputs, outputs, name="TriTF_AP_{}".format(graph))
 
 
 def export_deploy(model):

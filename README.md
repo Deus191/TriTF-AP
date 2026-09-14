@@ -1,6 +1,6 @@
 # TriTF-AP research code
 
-This is the public-code layout for the TriTF-AP motor-imagery EEG project. It contains the reconstructed paper model, preprocessing and training utilities, baseline model implementations, tests, and example dataset configuration.
+This is the public-code layout for the TriTF-AP motor-imagery EEG project. It contains an executable implementation of the method specified in the manuscript, preprocessing and training utilities, baseline model implementations, tests, and example dataset configuration.
 
 No EEG data, generated time-frequency images, experiment logs, predictions, checkpoints, result tables, or manuscript files are included. All run outputs must be written below `outputs/`, which is ignored by Git.
 
@@ -15,7 +15,20 @@ tests/               Offline regression and smoke tests
 third_party/         Third-party notices and vendored dependency licenses
 ```
 
-The code in `src/` is a repaired/reconstructed implementation. It is not a claim that historical checkpoints or manuscript accuracy values have been reproduced.
+The code in `src/` is a repaired implementation of the manuscript method. It is not a claim that historical checkpoints or manuscript accuracy values have been reproduced. Results must be regenerated with this version before they can be attributed to it.
+
+## Manuscript-method contract
+
+The public entry path is `VAE.py -> Hope.Train -> paper_model.build_classifier`. It implements:
+
+- C3/Cz/C4 input interpreted uniformly in that order;
+- `C3-Cz` and `C4-Cz` derivations, with one 8--30 Hz Morlet-CWT log-power map per derivation;
+- vertical concatenation of the two maps, joint per-trial normalization, fixed `jet` mapping, and resize to `64x64x3` RGB;
+- training-split-only convolutional-VAE augmentation;
+- the manuscript's DW8/PW24 stem, four-branch RepSeparable block, PW32, SimAM, GAP, Dense72 and softmax head;
+- validation-loss early stopping and analytical deployment fusion.
+
+The TF writer has no switch for a three-map or non-bipolar representation. Each generated split contains `preprocessing.json` recording the representation contract. See [METHOD_IMPLEMENTATION.md](METHOD_IMPLEMENTATION.md) for the exact paper-to-code mapping and remaining reproducibility boundary.
 
 ## Installation
 
@@ -51,6 +64,8 @@ Generate IV-2b time-frequency images into an ignored output directory after conf
 .\.venv\Scripts\python.exe -c "import sys; sys.path.insert(0, 'src'); from preprocessing_2b import GetPrecossedData; GetPrecossedData(1)"
 ```
 
+Do not mix images made by an older preprocessing implementation with this version. The writer refuses to overwrite an existing subject/split directory; use a new output root when regenerating.
+
 Run TriTF-AP on IV-2b images:
 
 ```powershell
@@ -74,4 +89,3 @@ Run a raw-signal baseline on MAT files containing `data` and `label` arrays:
 Before pushing, run `git status --short --ignored` and `git ls-files`. Files matching data, result, model-weight, archive, image, and local-environment patterns are excluded by the root `.gitignore`.
 
 The project-specific source is currently distributed with all rights reserved. Review `LICENSE` and the provenance notes in `THIRD_PARTY_NOTICES.md` before changing the repository to an open-source license.
-

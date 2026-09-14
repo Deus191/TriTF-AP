@@ -1,6 +1,4 @@
-"""Repaired entry: legacy x_val/y_val arguments are FINAL TEST, not early-stop data.
-Original: snapshots/before_fixes/legacy/Hope.py. New model is a reconstruction.
-"""
+"""TriTF-AP training entry; x_val/y_val are FINAL TEST, not early-stop data."""
 import csv
 import json
 from datetime import datetime, timezone
@@ -41,7 +39,8 @@ def Train(x_train, y_train, x_val=None, y_val=None, log=None, *, seed=42,
     output_dir.mkdir(parents=True, exist_ok=False)
     config = dict(status="started", created_utc=datetime.now(timezone.utc).isoformat(),
                   dataset=dataset_name, protocol=protocol_name, seed=seed,
-                  model="paper_equation_reconstruction_v1_not_historical", num_classes=num_classes,
+                  model="tritf_ap_paper_v1", num_classes=num_classes,
+                  expected_input_representation="tritf_ap_paper_v1",
                   epochs=epochs, batch_size=batch_size, patience=patience,
                   learning_rate=0.0003, monitor="val_loss", augment=augment,
                   vae_epochs=vae_epochs if augment else 0, validation_fraction=validation_fraction,
@@ -61,7 +60,7 @@ def Train(x_train, y_train, x_val=None, y_val=None, log=None, *, seed=42,
     try:
         import tensorflow as tf
         from sklearn.metrics import accuracy_score, cohen_kappa_score, log_loss
-        from paper_model import build_classifier, export_deploy
+        from paper_model import PAPER_MODEL_VERSION, build_classifier, export_deploy
         tf.keras.backend.clear_session()
         tf.keras.utils.set_random_seed(seed)
         tf.config.experimental.enable_op_determinism()
@@ -76,6 +75,8 @@ def Train(x_train, y_train, x_val=None, y_val=None, log=None, *, seed=42,
         config["fit_total_count"] = len(x_fit)
         tf.keras.utils.set_random_seed(seed)
         model = build_classifier(num_classes=num_classes)
+        if config["model"] != PAPER_MODEL_VERSION:
+            raise RuntimeError("Training configuration and paper model version disagree.")
         model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=0.0003),
                       loss="sparse_categorical_crossentropy", metrics=["accuracy"])
         config["training_graph_parameters"] = model.count_params()
