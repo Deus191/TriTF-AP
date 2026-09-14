@@ -8,7 +8,7 @@ No EEG data, generated time-frequency images, experiment logs, predictions, chec
 
 ```text
 src/                 TriTF-AP preprocessing, augmentation, model, and training code
-baselines/           DMSA-CNN, EEG-Inception, and CTNet model code plus a LOSO runner
+baselines/           Raw-signal baselines and leakage-safe LOSO runners
 config/              Dataset configuration template without local computer paths
 scripts/             Explicit dataset inspection/download helper
 tests/               Offline regression and smoke tests
@@ -77,6 +77,11 @@ Run a raw-signal baseline on MAT files containing `data` and `label` arrays:
 ```powershell
 .\.venv\Scripts\python.exe baselines/train_loso.py --model eeg_inception --data-root D:/path/to/mat --output outputs/eeg_inception_seed42
 ```
+
+The MASSANet adapter supports the manuscript's three-channel LOSO protocol on
+both IV-2b and OpenBMI while loading the upstream MASSANet model from a separate
+clone. See [baselines/README.md](baselines/README.md) for AutoDL commands and the
+recorded reproducibility boundary.
 
 ## Tests
 
