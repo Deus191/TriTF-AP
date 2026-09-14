@@ -1,4 +1,4 @@
-"""Leakage-safe MASSANet baseline for the paper's IV-2b/OpenBMI LOSO protocol.
+"""Leakage-safe MASSANet baseline for the paper's IV-2b/OpenBMI protocols.
 
 The upstream MASSANet source is an external runtime dependency. Clone it from
 https://github.com/Taowelll/MASSANet and pass its directory with
@@ -20,7 +20,7 @@ from scipy.signal import butter, filtfilt
 import torch
 import torch.nn.functional as functional
 from sklearn.metrics import accuracy_score, cohen_kappa_score, f1_score
-from sklearn.model_selection import GroupShuffleSplit
+from sklearn.model_selection import GroupShuffleSplit, StratifiedShuffleSplit
 from torch import nn
 from torch.utils.data import DataLoader, Dataset
 
@@ -94,11 +94,22 @@ def validate_trials(data, labels, source="dataset"):
     return data, labels
 
 
-def normalize_trials(data):
-    """Match the paper's per-trial maximum-absolute-value normalization."""
+def fit_channel_standardizer(data):
+    """Fit per-channel mean/std on the fit partition only."""
     data = np.asarray(data, dtype=np.float32)
-    denominator = np.max(np.abs(data), axis=(1, 2), keepdims=True)
-    return np.divide(data, denominator, out=np.zeros_like(data), where=denominator > 0)
+    mean = data.mean(axis=(0, 2), keepdims=True, dtype=np.float64).astype(np.float32)
+    std = data.std(axis=(0, 2), keepdims=True, dtype=np.float64).astype(np.float32)
+    if not np.isfinite(mean).all() or not np.isfinite(std).all() or np.any(std <= 0):
+        raise ValueError("Cannot fit normalization: a channel has invalid or zero variance")
+    return mean, std
+
+
+def apply_channel_standardizer(data, mean, std):
+    data = np.asarray(data, dtype=np.float32)
+    standardized = (data - mean) / std
+    if not np.isfinite(standardized).all():
+        raise ValueError("Non-finite values after train-statistics normalization")
+    return standardized.astype(np.float32, copy=False)
 
 
 def preprocess_iv2b_trials(data):
@@ -108,7 +119,7 @@ def preprocess_iv2b_trials(data):
         4, [LOWCUT, HIGHCUT], btype="bandpass", fs=SAMPLING_RATE
     )
     filtered = filtfilt(coefficients_b, coefficients_a, data, axis=-1)
-    return normalize_trials(filtered)
+    return filtered.astype(np.float32)
 
 
 def load_iv2b_subject(data_root, subject):
@@ -137,7 +148,16 @@ def load_iv2b_subject(data_root, subject):
 
 
 def _openbmi_cache_name(subject):
-    return "openbmi_paper3ch_8-30hz_250hz_4s_sub{:02d}.npz".format(subject)
+    return "openbmi_paper3ch_8-30hz_250hz_4s_filtered_v2_sub{:02d}.npz".format(subject)
+
+
+def configure_moabb_upstream(moabb, data_root):
+    """Select the original GigaDB files instead of MOABB's automatic NEMAR mirror."""
+    set_provider = getattr(moabb, "set_download_provider", None)
+    if set_provider is None:
+        raise RuntimeError("MOABB >= 1.7 is required to select the OpenBMI upstream provider")
+    set_provider("upstream")
+    moabb.set_download_dir(str(data_root))
 
 
 def load_openbmi_subject(data_root, cache_dir, subject):
@@ -147,9 +167,22 @@ def load_openbmi_subject(data_root, cache_dir, subject):
         with np.load(cache_path, allow_pickle=False) as cached:
             data, labels = validate_trials(cached["data"], cached["label"], str(cache_path))
             ids = np.asarray(cached["trial_id"]).astype(str)
+            sessions = np.asarray(cached["session"], dtype=np.int8)
         if len(ids) != len(labels) or len(set(ids.tolist())) != len(ids):
             raise ValueError("Invalid cached OpenBMI trial IDs: {}".format(cache_path))
-        return {"x": data, "y": labels, "ids": ids, "split_lengths": {"all": len(data)}}
+        if len(sessions) != len(labels) or set(np.unique(sessions).tolist()) != {1, 2}:
+            raise ValueError("Invalid cached OpenBMI session metadata: {}".format(cache_path))
+        return {
+            "x": data,
+            "y": labels,
+            "ids": ids,
+            "session": sessions,
+            "split_lengths": {
+                "session_1": int(np.sum(sessions == 1)),
+                "session_2": int(np.sum(sessions == 2)),
+                "all": len(data),
+            },
+        }
 
     try:
         import moabb
@@ -160,7 +193,7 @@ def load_openbmi_subject(data_root, cache_dir, subject):
             "OpenBMI preparation requires MOABB; install requirements-massanet.txt"
         ) from error
 
-    moabb.set_download_dir(str(data_root))
+    configure_moabb_upstream(moabb, data_root)
     dataset = Lee2019_MI(train_run=True, test_run=False, sessions=[1, 2])
     paradigm = MotorImagery(
         n_classes=2,
@@ -179,10 +212,19 @@ def load_openbmi_subject(data_root, cache_dir, subject):
     data = np.asarray(data)
     if data.ndim != 3 or data.shape[1] != 3 or data.shape[-1] < TIME_POINTS:
         raise ValueError("Unexpected MOABB OpenBMI shape for subject {}: {}".format(subject, data.shape))
-    data = normalize_trials(data[..., :TIME_POINTS])
+    data = np.asarray(data[..., :TIME_POINTS], dtype=np.float32)
     labels = labels_to_int(labels, "OpenBMI subject {}".format(subject))
     session_values = metadata["session"].astype(str).tolist()
     run_values = metadata["run"].astype(str).tolist()
+    unique_sessions = sorted(set(session_values))
+    if len(unique_sessions) != 2:
+        raise ValueError(
+            "Expected two labelled OpenBMI sessions for subject {}; got {}".format(
+                subject, unique_sessions
+            )
+        )
+    session_mapping = {value: index + 1 for index, value in enumerate(unique_sessions)}
+    sessions = np.asarray([session_mapping[value] for value in session_values], dtype=np.int8)
     ids = np.asarray(
         [
             "OpenBMI/S{:02d}/{}/{}/{}".format(subject, session, run, index)
@@ -190,31 +232,58 @@ def load_openbmi_subject(data_root, cache_dir, subject):
         ]
     )
     data, labels = validate_trials(data, labels, "OpenBMI subject {}".format(subject))
+    for session in (1, 2):
+        if set(np.unique(labels[sessions == session]).tolist()) != {0, 1}:
+            raise ValueError(
+                "Both classes must be present in OpenBMI subject {} session {}".format(
+                    subject, session
+                )
+            )
     temporary = cache_path.with_suffix(".part.npz")
-    np.savez_compressed(temporary, data=data, label=labels, trial_id=ids)
+    np.savez_compressed(
+        temporary, data=data, label=labels, trial_id=ids, session=sessions
+    )
     temporary.replace(cache_path)
-    return {"x": data, "y": labels, "ids": ids, "split_lengths": {"all": len(data)}}
+    return {
+        "x": data,
+        "y": labels,
+        "ids": ids,
+        "session": sessions,
+        "split_lengths": {
+            "session_1": int(np.sum(sessions == 1)),
+            "session_2": int(np.sum(sessions == 2)),
+            "all": len(data),
+        },
+    }
 
 
 def load_all_subjects(args):
     records = {}
     expected = DATASET_SUBJECTS[args.dataset]
+    required = expected if args.protocol == "loso" else tuple(args.subjects)
     if args.dataset == "bci_iv_2b":
-        for subject in expected:
+        for subject in required:
             records[subject] = load_iv2b_subject(args.data_root, subject)
     else:
         cache_dir = args.cache_dir or args.data_root / "massanet_3ch_cache"
-        for subject in expected:
-            print("Preparing OpenBMI subject {}/{}".format(subject, expected[-1]), flush=True)
+        for position, subject in enumerate(required, start=1):
+            print(
+                "Preparing OpenBMI subject {} ({}/{})".format(subject, position, len(required)),
+                flush=True,
+            )
             records[subject] = load_openbmi_subject(args.data_root, cache_dir, subject)
     return records
 
 
-def concatenate_subjects(records, subjects, split=None):
+def concatenate_subjects(records, subjects, split=None, session=None):
     arrays, labels, groups, ids = [], [], [], []
     for subject in subjects:
         record = records[subject]
-        if split is None:
+        if session is not None:
+            if "session" not in record:
+                raise ValueError("Session selection is only available for OpenBMI")
+            indices = np.flatnonzero(record["session"] == session)
+        elif split is None:
             indices = np.arange(len(record["y"]))
         else:
             start = 0 if split == "T" else record["split_lengths"]["T"]
@@ -232,38 +301,56 @@ def concatenate_subjects(records, subjects, split=None):
     )
 
 
-def build_fold(records, dataset, held_out, seed, validation_fraction):
+def build_fold(records, dataset, held_out, seed, validation_fraction, protocol="loso"):
     all_subjects = DATASET_SUBJECTS[dataset]
-    source_subjects = [subject for subject in all_subjects if subject != held_out]
-    source_x, source_y, groups, source_ids = concatenate_subjects(records, source_subjects)
-    if dataset == "bci_iv_2b":
-        test_x, test_y, _, test_ids = concatenate_subjects(records, [held_out], split="E")
-        test_scope = "held-out subject E split"
+    if protocol == "ho":
+        if dataset != "openbmi":
+            raise ValueError("The HO protocol is only defined for OpenBMI")
+        source_x, source_y, groups, source_ids = concatenate_subjects(
+            records, [held_out], session=1
+        )
+        test_x, test_y, _, test_ids = concatenate_subjects(
+            records, [held_out], session=2
+        )
+        indices = np.arange(len(source_y))
+        splitter = StratifiedShuffleSplit(
+            n_splits=1, test_size=validation_fraction, random_state=seed
+        )
+        fit, validation = next(splitter.split(indices, source_y))
+        fit_groups = [held_out]
+        validation_groups = [held_out]
+        test_scope = "same subject: session 1 fit/validation, session 2 test"
     else:
-        test_x, test_y, _, test_ids = concatenate_subjects(records, [held_out])
-        test_scope = "held-out subject, both labelled sessions"
-
-    indices = np.arange(len(source_y))
-    splitter = GroupShuffleSplit(
-        n_splits=128, test_size=validation_fraction, random_state=seed
-    )
-    for fit, validation in splitter.split(indices, source_y, groups):
-        if set(source_y[fit]) == {0, 1} and set(source_y[validation]) == {0, 1}:
-            break
-    else:
-        raise ValueError("Could not create a group-disjoint validation split")
-    fit_groups = sorted(set(groups[fit].tolist()))
-    validation_groups = sorted(set(groups[validation].tolist()))
-    if set(fit_groups) & set(validation_groups) or held_out in fit_groups + validation_groups:
-        raise AssertionError("Subject leakage detected")
+        source_subjects = [subject for subject in all_subjects if subject != held_out]
+        source_x, source_y, groups, source_ids = concatenate_subjects(records, source_subjects)
+        if dataset == "bci_iv_2b":
+            test_x, test_y, _, test_ids = concatenate_subjects(records, [held_out], split="E")
+            test_scope = "held-out subject E split"
+        else:
+            test_x, test_y, _, test_ids = concatenate_subjects(records, [held_out])
+            test_scope = "held-out subject, both labelled sessions"
+        indices = np.arange(len(source_y))
+        splitter = GroupShuffleSplit(
+            n_splits=128, test_size=validation_fraction, random_state=seed
+        )
+        for fit, validation in splitter.split(indices, source_y, groups):
+            if set(source_y[fit]) == {0, 1} and set(source_y[validation]) == {0, 1}:
+                break
+        else:
+            raise ValueError("Could not create a group-disjoint validation split")
+        fit_groups = sorted(set(groups[fit].tolist()))
+        validation_groups = sorted(set(groups[validation].tolist()))
+        if set(fit_groups) & set(validation_groups) or held_out in fit_groups + validation_groups:
+            raise AssertionError("Subject leakage detected")
     if set(source_ids.tolist()) & set(test_ids.tolist()):
         raise AssertionError("Trial leakage detected")
+    mean, std = fit_channel_standardizer(source_x[fit])
     return {
-        "fit_x": source_x[fit],
+        "fit_x": apply_channel_standardizer(source_x[fit], mean, std),
         "fit_y": source_y[fit],
-        "validation_x": source_x[validation],
+        "validation_x": apply_channel_standardizer(source_x[validation], mean, std),
         "validation_y": source_y[validation],
-        "test_x": test_x,
+        "test_x": apply_channel_standardizer(test_x, mean, std),
         "test_y": test_y,
         "fit_ids": source_ids[fit],
         "validation_ids": source_ids[validation],
@@ -271,6 +358,8 @@ def build_fold(records, dataset, held_out, seed, validation_fraction):
         "fit_subjects": fit_groups,
         "validation_subjects": validation_groups,
         "test_scope": test_scope,
+        "normalization_mean": mean.reshape(-1),
+        "normalization_std": std.reshape(-1),
     }
 
 
@@ -423,13 +512,24 @@ def json_ready(value):
 
 
 def train_fold(args, records, model_class, source_info, held_out):
-    fold = build_fold(records, args.dataset, held_out, args.seed, args.validation_fraction)
+    fold = build_fold(
+        records, args.dataset, held_out, args.seed, args.validation_fraction, args.protocol
+    )
     fold_dir = args.output / "sub_{:02d}".format(held_out)
     if fold_dir.exists():
         config_path = fold_dir / "config.json"
         if args.resume and config_path.is_file():
             previous = json.loads(config_path.read_text(encoding="utf-8"))
             if previous.get("status") == "complete":
+                if (
+                    previous.get("dataset") != args.dataset
+                    or previous.get("protocol") != args.protocol
+                ):
+                    raise ValueError(
+                        "Existing completed fold uses a different dataset/protocol: {}".format(
+                            fold_dir
+                        )
+                    )
                 print("Skipping completed subject {}".format(held_out), flush=True)
                 return
         raise FileExistsError("Incomplete/existing fold directory: {}".format(fold_dir))
@@ -467,7 +567,12 @@ def train_fold(args, records, model_class, source_info, held_out):
                 "window_seconds": WINDOW_SECONDS,
                 "time_points": TIME_POINTS,
                 "bandpass_hz": [LOWCUT, HIGHCUT],
-                "normalization": "per-trial maximum absolute value",
+                "normalization": "per-channel z-score fitted on fit partition only",
+            },
+            "normalization_statistics": {
+                "channel_mean": fold["normalization_mean"].tolist(),
+                "channel_std": fold["normalization_std"].tolist(),
+                "fitted_on": "fit partition only",
             },
             "external_source": source_info,
             "status": "started",
@@ -566,6 +671,7 @@ def train_fold(args, records, model_class, source_info, held_out):
     truth, predicted, _ = evaluate(model, test_loader, device)
     metrics = {
         "subject": held_out,
+        "protocol": args.protocol,
         "accuracy": float(accuracy_score(truth, predicted)),
         "kappa": float(cohen_kappa_score(truth, predicted)),
         "macro_f1": float(f1_score(truth, predicted, average="macro")),
@@ -587,20 +693,29 @@ def train_fold(args, records, model_class, source_info, held_out):
     print("Completed subject {}: {}".format(held_out, metrics), flush=True)
 
 
-def write_summary(output, dataset):
+def write_summary(output, dataset, protocol):
     rows = []
     for subject in DATASET_SUBJECTS[dataset]:
         path = output / "sub_{:02d}".format(subject) / "test_metrics.json"
         if path.is_file():
-            rows.append(json.loads(path.read_text(encoding="utf-8")))
+            row = json.loads(path.read_text(encoding="utf-8"))
+            if row.get("protocol") != protocol:
+                raise ValueError(
+                    "Output directory mixes protocols at {}: expected {}, got {}".format(
+                        path, protocol, row.get("protocol")
+                    )
+                )
+            rows.append(row)
     if not rows:
         return None
     metric_names = ("accuracy", "kappa", "macro_f1")
     aggregate = {
         "dataset": dataset,
+        "protocol": protocol,
         "completed_subjects": [row["subject"] for row in rows],
         "expected_subjects": list(DATASET_SUBJECTS[dataset]),
-        "complete_loso": len(rows) == len(DATASET_SUBJECTS[dataset]),
+        "complete_protocol": len(rows) == len(DATASET_SUBJECTS[dataset]),
+        "complete_loso": protocol == "loso" and len(rows) == len(DATASET_SUBJECTS[dataset]),
         "subject_count": len(rows),
     }
     for name in metric_names:
@@ -618,11 +733,15 @@ def write_summary(output, dataset):
 def build_parser():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dataset", required=True, choices=tuple(DATASET_SUBJECTS))
+    parser.add_argument(
+        "--protocol", choices=("loso", "ho"), default="loso",
+        help="LOSO for both datasets; HO is OpenBMI session 1 -> session 2",
+    )
     parser.add_argument("--data-root", required=True, type=Path)
     parser.add_argument("--massanet-root", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--cache-dir", type=Path, help="OpenBMI 3-channel preprocessed NPZ cache")
-    parser.add_argument("--subjects", type=int, nargs="+", help="Held-out subjects; default is the full LOSO set")
+    parser.add_argument("--subjects", type=int, nargs="+", help="Evaluation subjects; default is the full dataset")
     parser.add_argument("--epochs", type=int, default=500)
     parser.add_argument("--batch-size", type=int, default=16)
     parser.add_argument("--learning-rate", type=float, default=1e-3)
@@ -644,6 +763,8 @@ def build_parser():
 def validate_arguments(parser, args):
     expected = DATASET_SUBJECTS[args.dataset]
     args.subjects = args.subjects or list(expected)
+    if args.protocol == "ho" and args.dataset != "openbmi":
+        parser.error("--protocol ho is only supported for OpenBMI")
     if len(set(args.subjects)) != len(args.subjects) or any(subject not in expected for subject in args.subjects):
         parser.error("Held-out subjects must be unique and inside {}..{}".format(expected[0], expected[-1]))
     if not args.data_root.is_dir():
@@ -670,14 +791,33 @@ def main():
         ),
         flush=True,
     )
-    sample = torch.from_numpy(records[DATASET_SUBJECTS[args.dataset][0]]["x"][:2, None])
+    sample_subject = args.subjects[0]
+    sample_fold = build_fold(
+        records,
+        args.dataset,
+        sample_subject,
+        args.seed,
+        args.validation_fraction,
+        args.protocol,
+    )
+    sample = torch.from_numpy(sample_fold["fit_x"][:2, None])
     model = model_class(2, 3, SAMPLING_RATE, args.dropout)
     with torch.no_grad():
         output = model(sample)
     if tuple(output.shape) != (2, 2) or not torch.isfinite(output).all():
         raise RuntimeError("MASSANet forward smoke test failed: {}".format(tuple(output.shape)))
     print("MASSANet forward smoke test passed; parameters={}".format(sum(p.numel() for p in model.parameters())))
-    del model, sample
+    print(
+        "{} split smoke test passed for subject {}: fit={}, validation={}, test={}".format(
+            args.protocol.upper(),
+            sample_subject,
+            len(sample_fold["fit_y"]),
+            len(sample_fold["validation_y"]),
+            len(sample_fold["test_y"]),
+        ),
+        flush=True,
+    )
+    del model, sample, sample_fold
     if args.check_only:
         return
     if args.output.exists() and not args.resume:
@@ -686,7 +826,7 @@ def main():
     for held_out in args.subjects:
         seed_everything(args.seed + held_out)
         train_fold(args, records, model_class, source_info, held_out)
-        summary = write_summary(args.output, args.dataset)
+        summary = write_summary(args.output, args.dataset, args.protocol)
         print("Current summary: {}".format(summary), flush=True)
 
 
