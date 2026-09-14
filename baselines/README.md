@@ -28,6 +28,12 @@ python baselines/run_massanet.py \
   --check-only
 ```
 
+The IV-2b commands in this section use the paper-aligned normalization implemented
+by the adapter: per-channel mean and standard deviation are fitted on each fold's
+fit partition and then applied unchanged to validation and test data. Results from
+older adapter revisions that scaled every trial by its own maximum absolute value
+must not be mixed with this protocol.
+
 Run one held-out subject as a smoke experiment, then resume with all subjects:
 
 ```bash
