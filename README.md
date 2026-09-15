@@ -10,7 +10,7 @@ No EEG data, generated time-frequency images, experiment logs, predictions, chec
 src/                 TriTF-AP preprocessing, augmentation, model, and training code
 baselines/           Raw-signal baselines and leakage-safe LOSO runners
 config/              Dataset configuration template without local computer paths
-scripts/             Explicit dataset inspection/download helper
+scripts/             Dataset helpers, parallel launchers, and paired statistics
 tests/               Offline regression and smoke tests
 third_party/         Third-party notices and vendored dependency licenses
 ```
@@ -82,6 +82,31 @@ The MASSANet adapter supports the manuscript's three-channel LOSO protocol on
 both IV-2b and OpenBMI while loading the upstream MASSANet model from a separate
 clone. See [baselines/README.md](baselines/README.md) for AutoDL commands and the
 recorded reproducibility boundary.
+
+For a full OpenBMI LOSO run on a GPU host, the public
+launcher can split the 54 folds across four independent processes, resume
+completed subjects, merge fold directories, and verify the final summary:
+
+```bash
+python scripts/run_massanet_openbmi_parallel.py \
+  --data-root /path/to/OpenBMI \
+  --cache-dir /path/to/openbmi_massanet_cache \
+  --massanet-root /path/to/MASSANet \
+  --output outputs/massanet_openbmi_loso_seed42 \
+  --parallelism 4
+```
+
+Subject-wise paired Wilcoxon tests, Holm correction, rank-biserial effect sizes,
+exact sign tests, and paired-bootstrap confidence intervals can be regenerated
+without committing result files:
+
+```bash
+python scripts/paired_statistics.py \
+  --ours /path/to/ours.csv Accuracy \
+  --baseline MASSANet /path/to/massanet.csv Accuracy \
+  --family-name "OpenBMI LOSO confirmatory comparison" \
+  --output outputs/openbmi_statistics
+```
 
 ## Tests
 

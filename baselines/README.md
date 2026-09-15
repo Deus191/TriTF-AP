@@ -82,6 +82,27 @@ python baselines/run_massanet.py \
   --output outputs/massanet_openbmi_loso_seed42
 ```
 
+To run independent LOSO folds with four worker processes, use the parameterized
+launcher below. It first materializes the cache in one process, skips subjects
+already complete in the final output, keeps worker logs/results below the
+selected output parent, merges non-conflicting fold directories, and requires a
+complete 54-subject summary when all subjects are requested:
+
+```bash
+python scripts/run_massanet_openbmi_parallel.py \
+  --data-root /path/to/OpenBMI \
+  --cache-dir /path/to/openbmi_massanet_cache \
+  --massanet-root /path/to/MASSANet \
+  --output outputs/massanet_openbmi_loso_seed42 \
+  --parallelism 4 \
+  --device cuda
+```
+
+Each process uses the same GPU by default. Reduce `--parallelism` if GPU memory
+is insufficient; use `--device cuda:N` when launching separate commands on
+different GPUs. The launcher itself never copies data or generated outputs into
+tracked repository paths.
+
 Defaults retain MASSANet's published training settings where applicable: batch
 size 16, Adam with learning rate `1e-3` and weight decay `0.075`, label smoothing
 `0.05`, CutCat, cosine annealing, and dropout `0.1`. CutCat is restricted to the
