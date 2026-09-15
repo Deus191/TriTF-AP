@@ -5,3 +5,4 @@ scikit-learn
 torch
 torchsummary
 tqdm
+moabb>=1.7,<2

@@ -72,11 +72,16 @@ Run TriTF-AP on IV-2b images:
 .\.venv\Scripts\python.exe src/VAE.py --dataset 2b --protocol LOSO --output outputs/tritf_ap_2b_seed42
 ```
 
-Run a raw-signal baseline on MAT files containing `data` and `label` arrays:
+Run a non-MASSANet baseline on the same three-channel IV-2b protocol:
 
 ```powershell
-.\.venv\Scripts\python.exe baselines/train_loso.py --model eeg_inception --data-root D:/path/to/mat --output outputs/eeg_inception_seed42
+.\.venv\Scripts\python.exe baselines/train_loso.py --model eegnet --dataset bci_iv_2b --data-root D:/path/to/mat --output outputs/eegnet_seed42
 ```
+
+Available choices are `dmsa`, `eeg_inception`, `ctnet`, `eegnet`,
+`deepconvnet`, and `fbcsp_svm`. The same runner supports OpenBMI HO and LOSO;
+see [baselines/README.md](baselines/README.md) for commands and the four-worker
+AutoDL launcher.
 
 The MASSANet adapter supports the manuscript's three-channel LOSO protocol on
 both IV-2b and OpenBMI while loading the upstream MASSANet model from a separate

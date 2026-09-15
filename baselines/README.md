@@ -5,8 +5,63 @@ This directory contains code-only baseline implementations. It intentionally con
 - `dmsa.py`: DMSA-CNN-style multiscale attentional CNN implementation from the supplied comparison material.
 - `eeg_inception.py`: EEG-Inception-style model implementation from the supplied comparison material.
 - `ctnet.py`: clean model-only extraction of the CTNet architecture described by Zhao et al., *Scientific Reports* 14, 20237 (2024), DOI `10.1038/s41598-024-71118-7`.
-- `train_loso.py`: configurable raw-MAT LOSO runner. Outputs are always written below a user-selected output directory and are ignored by Git.
+- `eegnet.py`: compact EEGNet-8,2 implementation for three-channel raw EEG (Lawhern et al., 2018).
+- `deepconvnet.py`: four-block Deep ConvNet implementation (Schirrmeister et al., 2017).
+- `fbcsp.py`: filter-bank CSP, mutual-information feature selection, and SVM baseline (Ang et al., 2008).
+- `train_loso.py`: unified runner for all non-MASSANet baselines on IV-2b and OpenBMI.
 - `run_massanet.py`: leakage-safe adapter for the 2026 MASSANet model. It imports a separately cloned upstream repository and runs the paper's three-channel protocols (IV-2b LOSO; OpenBMI HO or LOSO) without copying MASSANet source into this repository.
+
+## Other baselines
+
+Install `requirements-baselines.txt`. The unified runner accepts `dmsa`,
+`eeg_inception`, `ctnet`, `eegnet`, `deepconvnet`, and `fbcsp_svm`. It reuses
+the MASSANet adapter's exact data loaders and split construction: fixed 8--30 Hz,
+250 Hz, 4-second C3/Cz/C4 inputs; group-disjoint validation for LOSO; and
+per-channel normalization fitted only on the fit partition.
+
+Run IV-2b LOSO (training subjects use T+E; each held-out subject is evaluated on E):
+
+```bash
+python baselines/train_loso.py \
+  --model eegnet \
+  --dataset bci_iv_2b \
+  --data-root /root/autodl-fs/datasets/BCI_IV_2b/mymat_withoutFilter \
+  --output outputs/eegnet_iv2b_loso_seed42
+```
+
+Run OpenBMI HO (session 1 train/validation, session 2 test):
+
+```bash
+python baselines/train_loso.py \
+  --model deepconvnet \
+  --dataset openbmi \
+  --protocol ho \
+  --data-root /root/autodl-fs/OpenBMI \
+  --cache-dir /root/autodl-tmp/openbmi_massanet_cache \
+  --output outputs/deepconvnet_openbmi_ho_seed42
+```
+
+Run OpenBMI LOSO with four fold workers (replace `--model` and `--output` for
+each baseline):
+
+```bash
+python scripts/run_openbmi_baselines_parallel.py \
+  --model fbcsp_svm \
+  --data-root /root/autodl-fs/OpenBMI \
+  --cache-dir /root/autodl-tmp/openbmi_massanet_cache \
+  --output outputs/fbcsp_svm_openbmi_loso_seed42 \
+  --parallelism 4
+```
+
+Use `--subjects 1 --check-only` before a full run. A completed fold contains its
+configuration, exact trial IDs, training history, test predictions, and metrics.
+The neural baselines save `best.pth`; FBCSP-SVM saves `best.pkl`. Both file types,
+all CSV logs, and every `outputs/` directory are ignored by Git. Parameter counts
+are reported for neural networks; FBCSP-SVM reports `null` with an explanation
+because its learned CSP filters and SVM support vectors are data-dependent.
+
+These are transparent in-repository reproductions of the published architectures,
+not claims that the original authors' historical training source was recovered.
 
 ## MASSANet adapter
 

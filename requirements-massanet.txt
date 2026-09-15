@@ -1,3 +1,2 @@
 -r requirements-baselines.txt
 einops
-moabb>=1.7,<2

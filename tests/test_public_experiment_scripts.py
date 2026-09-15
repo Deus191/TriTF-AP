@@ -16,6 +16,9 @@ def load_module(name, relative_path):
 
 
 PARALLEL = load_module("massanet_parallel", "scripts/run_massanet_openbmi_parallel.py")
+BASELINE_PARALLEL = load_module(
+    "baseline_parallel", "scripts/run_openbmi_baselines_parallel.py"
+)
 STATS = load_module("paired_statistics", "scripts/paired_statistics.py")
 
 
@@ -41,6 +44,33 @@ class ParallelLauncherTests(unittest.TestCase):
                 json.dumps({"subject": 2, "protocol": "ho"}), encoding="utf-8"
             )
             self.assertEqual(PARALLEL.completed_subjects(output), {1})
+
+    def test_baseline_completion_requires_matching_model(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            for subject, model in ((1, "eegnet"), (2, "deepconvnet")):
+                fold = output / "sub_{:02d}".format(subject)
+                fold.mkdir()
+                (fold / "test_metrics.json").write_text(
+                    json.dumps(
+                        {
+                            "subject": subject,
+                            "dataset": "openbmi",
+                            "protocol": "loso",
+                            "model": model,
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+            self.assertEqual(
+                BASELINE_PARALLEL.completed_subjects(output, "eegnet"), {1}
+            )
+
+    def test_baseline_parallel_partition_is_complete(self):
+        groups = BASELINE_PARALLEL.split_subjects(list(range(1, 8)), 4)
+        flattened = [subject for group in groups for subject in group]
+        self.assertEqual(sorted(flattened), list(range(1, 8)))
+        self.assertEqual(len(flattened), len(set(flattened)))
 
 
 class PairedStatisticsTests(unittest.TestCase):
