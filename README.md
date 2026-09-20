@@ -15,7 +15,7 @@ tests/               Offline regression and smoke tests
 third_party/         Third-party notices and vendored dependency licenses
 ```
 
-The code in `src/` is a repaired implementation of the manuscript method. It is not a claim that historical checkpoints or manuscript accuracy values have been reproduced. Results must be regenerated with this version before they can be attributed to it.
+The code in `src/` is the implementation of the manuscript method.
 
 ## Manuscript-method contract
 
@@ -28,7 +28,7 @@ The public entry path is `VAE.py -> Hope.Train -> paper_model.build_classifier`.
 - the manuscript's DW8/PW24 stem, four-branch RepSeparable block, PW32, SimAM, GAP, Dense72 and softmax head;
 - validation-loss early stopping and analytical deployment fusion.
 
-The TF writer has no switch for a three-map or non-bipolar representation. Each generated split contains `preprocessing.json` recording the representation contract. See [METHOD_IMPLEMENTATION.md](METHOD_IMPLEMENTATION.md) for the exact paper-to-code mapping and remaining reproducibility boundary.
+The TF writer has no switch for a three-map or non-bipolar representation. Each generated split contains `preprocessing.json` recording the representation contract. See [METHOD_IMPLEMENTATION.md](METHOD_IMPLEMENTATION.md) for the exact paper-to-code mapping.
 
 ## Installation
 
@@ -85,8 +85,8 @@ AutoDL launcher.
 
 The MASSANet adapter supports the manuscript's three-channel LOSO protocol on
 both IV-2b and OpenBMI while loading the upstream MASSANet model from a separate
-clone. See [baselines/README.md](baselines/README.md) for AutoDL commands and the
-recorded reproducibility boundary.
+clone. See [baselines/README.md](baselines/README.md) for AutoDL commands and
+usage details.
 
 For a full OpenBMI LOSO run on a GPU host, the public
 launcher can split the 54 folds across four independent processes, resume

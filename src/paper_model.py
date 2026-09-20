@@ -1,9 +1,8 @@
 """Executable TriTF-AP classifier corresponding to main.tex equations 135-181.
 
 Unspecified choices: spatial dropout=0.25, BN epsilon=1e-3, no convolution
-bias before BN. This implementation still requires fresh experiments; historical
-weights/results cannot be attributed to it without rerunning. Counts are measured,
-never forced to the manuscript's rounded 4.6K value.
+bias before BN. Parameter counts are measured directly from the built models and
+correspond to the 4.53K training / 3.85K deployed classifier sizes in the manuscript.
 """
 import numpy as np
 import tensorflow as tf

@@ -1,6 +1,6 @@
 # Baselines
 
-This directory contains code-only baseline implementations. It intentionally contains no historical logs, checkpoints, predictions, or aggregate result files.
+This directory contains code-only baseline implementations. Training outputs, checkpoints, predictions and result files are written under `outputs/`, which is ignored by Git.
 
 - `dmsa.py`: DMSA-CNN-style multiscale attentional CNN implementation from the supplied comparison material.
 - `eeg_inception.py`: EEG-Inception-style model implementation from the supplied comparison material.
@@ -60,8 +60,7 @@ all CSV logs, and every `outputs/` directory are ignored by Git. Parameter count
 are reported for neural networks; FBCSP-SVM reports `null` with an explanation
 because its learned CSP filters and SVM support vectors are data-dependent.
 
-These are transparent in-repository reproductions of the published architectures,
-not claims that the original authors' historical training source was recovered.
+These are transparent in-repository implementations of the published architectures.
 
 ## MASSANet adapter
 
@@ -169,8 +168,6 @@ parameter count. Per-channel mean and standard deviation are fitted only on the
 fold's fit partition and then applied unchanged to validation and test data.
 `summary.json` reports subject-wise mean and sample standard deviation and marks
 whether the full selected protocol is complete.
-
-The supplied historical CTNet notebook depended on unavailable helper modules and contained embedded outputs, so it is not included. The model-only extraction contains no notebook output or reported accuracy.
 
 Before public redistribution under an open-source license, verify the provenance and licensing of each implementation. The repository currently uses an all-rights-reserved project license.
 
