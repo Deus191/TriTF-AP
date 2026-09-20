@@ -18,8 +18,8 @@ Full license texts are retained at `third_party/gumpy/LICENSE`,
 original copyright notice, as the MIT License requires.
 
 The remaining baseline implementations — `eegnet.py`, `deepconvnet.py`,
-`fbcsp.py`, `train_loso.py` and `run_massanet.py` — are original to this
-repository and are covered by the project's MIT License.
+`eeg_inception.py`, `fbcsp.py`, `train_loso.py` and `run_massanet.py` — are
+original to this repository and are covered by the project's MIT License.
 
 ## External runtime dependencies
 

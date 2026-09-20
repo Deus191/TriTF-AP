@@ -2,8 +2,8 @@
 
 This directory contains code-only baseline implementations. Training outputs, checkpoints, predictions and result files are written under `outputs/`, which is ignored by Git.
 
-- `dmsa.py`: DMSA-CNN-style multiscale attentional CNN implementation from the supplied comparison material.
-- `eeg_inception.py`: EEG-Inception-style model implementation from the supplied comparison material.
+- `dmsa.py`: DMSA-CNN-style multiscale attentional CNN. The DMSA layers are original to this repository; the EEGNet/DeepConvNet-style primitives they build on come from FBCNet (see `THIRD_PARTY_NOTICES.md`).
+- `eeg_inception.py`: EEG-Inception-style architecture implemented in this repository.
 - `ctnet.py`: clean model-only extraction of the CTNet architecture described by Zhao et al., *Scientific Reports* 14, 20237 (2024), DOI `10.1038/s41598-024-71118-7`.
 - `eegnet.py`: compact EEGNet-8,2 implementation for three-channel raw EEG (Lawhern et al., 2018).
 - `deepconvnet.py`: four-block Deep ConvNet implementation (Schirrmeister et al., 2017).
