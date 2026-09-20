@@ -169,5 +169,5 @@ fold's fit partition and then applied unchanged to validation and test data.
 `summary.json` reports subject-wise mean and sample standard deviation and marks
 whether the full selected protocol is complete.
 
-Before public redistribution under an open-source license, verify the provenance and licensing of each implementation. The repository currently uses an all-rights-reserved project license.
+Each implementation is distributed under the repository's MIT License, except where `THIRD_PARTY_NOTICES.md` states otherwise.
 

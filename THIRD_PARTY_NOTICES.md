@@ -1,8 +1,27 @@
 # Third-party notices
 
-The vendored `gumpy` package is licensed under the MIT License. Its original license is retained at `third_party/gumpy/LICENSE`.
+The project's own source is released under the MIT License (see `LICENSE`). The
+components listed below contain or adapt code from other projects and remain
+governed by their own licenses. The repository-level `LICENSE` does not
+relicense them.
 
-The baseline implementations under `baselines/` were organized from research materials supplied with this project, and the paper citations are retained in `baselines/README.md`. Before changing this repository to a permissive open-source license, confirm the provenance and redistribution terms of each baseline implementation. The repository-level `LICENSE` does not relicense third-party code.
+## Vendored and adapted code
+
+| Path | Origin | License |
+|---|---|---|
+| `src/gumpy/` | [gumpy](https://github.com/gumpy-bci/gumpy) | MIT, Copyright (c) 2018 The gumpy developers |
+| `baselines/dmsa.py` | EEGNet/DeepConvNet-style primitives from [ravikiran-mane/FBCNet](https://github.com/ravikiran-mane/FBCNet); DMSA layers original to this repository | MIT, Copyright (c) 2020 ravikiran-mane |
+| `baselines/ctnet.py` | CTNet model extracted from [snailpt/CTNet](https://github.com/snailpt/CTNet) | MIT, Copyright (c) 2024 snailpt |
+
+Full license texts are retained at `third_party/gumpy/LICENSE`,
+`third_party/FBCNet-LICENSE` and `third_party/CTNet-LICENSE`. Each keeps its
+original copyright notice, as the MIT License requires.
+
+The remaining baseline implementations — `eegnet.py`, `deepconvnet.py`,
+`fbcsp.py`, `train_loso.py` and `run_massanet.py` — are original to this
+repository and are covered by the project's MIT License.
+
+## External runtime dependencies
 
 `baselines/run_massanet.py` is an interoperability/training adapter and does not
 contain MASSANet implementation source. At runtime it loads a separately cloned

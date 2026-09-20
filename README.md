@@ -123,4 +123,4 @@ python scripts/paired_statistics.py \
 
 Before pushing, run `git status --short --ignored` and `git ls-files`. Files matching data, result, model-weight, archive, image, and local-environment patterns are excluded by the root `.gitignore`.
 
-The project-specific source is currently distributed with all rights reserved. Review `LICENSE` and the provenance notes in `THIRD_PARTY_NOTICES.md` before changing the repository to an open-source license.
+The project's own source is released under the MIT License (see `LICENSE`). Third-party components remain under their own licenses; see `THIRD_PARTY_NOTICES.md`.
